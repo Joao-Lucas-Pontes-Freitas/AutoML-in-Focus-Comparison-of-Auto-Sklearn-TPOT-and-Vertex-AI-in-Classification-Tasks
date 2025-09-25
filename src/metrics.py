@@ -1,7 +1,7 @@
 from sklearn import metrics
 
 
-def evaluate_model_metrics(model, X_test, y_test):
+def evaluate_metrics(model, X_test, y_test):
     """
     Calculates main model metrics
 
