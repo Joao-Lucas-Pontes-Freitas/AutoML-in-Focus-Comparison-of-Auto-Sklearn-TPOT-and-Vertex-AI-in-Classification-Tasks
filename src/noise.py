@@ -2,70 +2,70 @@ import math
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_categorical_dtype, is_float_dtype, is_integer_dtype
+from pandas.api.types import is_integer_dtype
 
 
 # ============================================================
-# 1) LABEL NOISE (flip de rótulos estratificado no TREINO)
+# 1) LABEL NOISE (stratified label flipping in TRAIN)
 # ============================================================
 def label_noise(
     y_train: pd.DataFrame, p: float = 0.10, random_state: int = 42
 ) -> pd.DataFrame:
     """
-    Aplica ruído de rótulo (flip) estratificado no conjunto de TREINO.
-    - Seleciona ceil(p * n_da_classe) instâncias por classe.
-    - Troca o rótulo dessas instâncias por outra classe escolhida uniformemente ao acaso.
-    - Imprime metadados de auditoria (quantos flips por classe).
+    Applies stratified label noise (flip) to the TRAIN set.
+    - Selects ceil(p * n_per_class) instances per class.
+    - Changes the label of these instances to another class chosen uniformly at random.
+    - Prints audit metadata (number of flips per class).
 
-    Parâmetros:
-        y_train: DataFrame com uma única coluna de rótulos.
-        p: Fração por classe a ser corrompida (default=0.10).
-        random_state: Semente para reprodutibilidade (default=42).
+    Parameters:
+        y_train: DataFrame with a single column of labels.
+        p: Fraction per class to be corrupted (default=0.10).
+        random_state: Seed for reproducibility (default=42).
 
-    Retorna:
-        y_train com rótulos flipados conforme especificação.
+    Returns:
+        y_train with labels flipped as specified.
     """
     if not isinstance(y_train, pd.DataFrame) or y_train.shape[1] != 1:
-        raise ValueError("y_train deve ser um DataFrame com exatamente 1 coluna.")
+        raise ValueError("y_train must be a DataFrame with exactly 1 column.")
 
     rng = np.random.default_rng(random_state)
-    nome_coluna = y_train.columns[0]
-    y_original = y_train[nome_coluna]
-    y_novo = y_original.copy()
+    col_name = y_train.columns[0]
+    y_original = y_train[col_name]
+    y_new = y_original.copy()
 
     classes = pd.unique(y_original)
-    contagem_flips = {}
+    flip_counts = {}
 
     for cls in classes:
-        index = y_original.index[y_original == cls]
-        n_flip = math.ceil(p * len(index))
+        idx = y_original.index[y_original == cls]
+        n_flip = math.ceil(p * len(idx))
         if n_flip == 0:
-            contagem_flips[cls] = 0
+            flip_counts[cls] = 0
             continue
 
-        index_escolhidos = rng.choice(index.to_numpy(), size=n_flip, replace=False)
-        contagem_flips[cls] = len(index_escolhidos)
+        chosen_idx = rng.choice(idx.to_numpy(), size=n_flip, replace=False)
+        flip_counts[cls] = len(chosen_idx)
 
-        # Para cada índice escolhido, escolher novo rótulo != cls
-        outras = [c for c in classes if c != cls]
-        for i in index_escolhidos:
-            y_novo.at[i] = rng.choice(outras)
+        # For each chosen index, pick a new label != cls
+        others = [c for c in classes if c != cls]
+        for i in chosen_idx:
+            y_new.at[i] = rng.choice(others)
 
-    # Auditoria
-    total_flips = sum(contagem_flips.values())
-    print("=== AUDITORIA: label_noise ===")
-    print(f"p (fração por classe): {p}, random_state: {random_state}")
-    print("Flips por classe:")
+    # Audit
+    total_flips = sum(flip_counts.values())
+    print("=== AUDIT: label_noise ===")
+    print(f"p (fraction per class): {p}, random_state: {random_state}")
+    print("Flips per class:")
     for cls in classes:
-        print(f"  - {cls}: {contagem_flips.get(cls, 0)}")
-    print(f"Total de rótulos alterados: {total_flips}")
+        print(f"  - {cls}: {flip_counts.get(cls, 0)}")
+    print(f"Total labels changed: {total_flips}")
 
-    # Retornar no mesmo formato (DataFrame)
-    return pd.DataFrame({nome_coluna: y_novo}, index=y_train.index)
+    # Return in the same format (DataFrame)
+    return pd.DataFrame({col_name: y_new}, index=y_train.index)
 
 
 # ============================================================
-# 2) DATA NOISE (IMAGENS) - SALT & PEPPER estratificado
+# 2) DATA NOISE (IMAGES) - SALT & PEPPER stratified
 # ============================================================
 def data_noise_images(
     X_train: pd.DataFrame,
@@ -75,90 +75,90 @@ def data_noise_images(
     random_state: int = 42,
 ) -> pd.DataFrame:
     """
-    Aplica ruído SALT & PEPPER em dados de imagem (MNIST ou DIGITS) no TREINO.
-    - Estratificado por classe: seleciona ceil(p * n_instâncias_da_classe).
-    - Para cada instância selecionada, escolhe ceil(p * n_colunas) pixels (colunas) DIFERENTES por instância.
-    - Define metade desses pixels como 0 (pepper) e metade como max (salt).
+    Applies SALT & PEPPER noise to image data (MNIST or DIGITS) in TRAIN.
+    - Stratified by class: selects ceil(p * n_instances_per_class).
+    - For each selected instance, chooses ceil(p * n_columns) pixels (columns) DIFFERENT per instance.
+    - Sets half of these pixels to 0 (pepper) and half to max (salt).
       * MNIST: max = 255
       * DIGITS: max = 16
-    - Retorna X_train modificado (mesmo formato) e imprime metadados.
+    - Returns modified X_train (same format) and prints metadata.
 
-    Parâmetros:
-        X_train: DataFrame (linhas=instâncias, colunas=pixels).
-        y_train: DataFrame 1 coluna com rótulos (para estratificação).
-        dataset_name: 'mnist_784' ou 'digits'.
-        p: Fração de instâncias por classe e fração de colunas por instância (default=0.10).
-        random_state: Semente para reprodutibilidade (default=42).
+    Parameters:
+        X_train: DataFrame (rows=instances, columns=pixels).
+        y_train: DataFrame 1 column with labels (for stratification).
+        dataset_name: 'mnist_784' or 'digits'.
+        p: Fraction of instances per class and fraction of columns per instance (default=0.10).
+        random_state: Seed for reproducibility (default=42).
 
-    Retorna:
-        X_train com ruído adicionado.
+    Returns:
+        X_train with noise added.
     """
     if dataset_name.lower() not in {"mnist_784", "digits"}:
-        raise ValueError("dataset_name deve ser 'mnist_784' ou 'digits'.")
+        raise ValueError("dataset_name must be 'mnist_784' or 'digits'.")
 
     if not isinstance(y_train, pd.DataFrame) or y_train.shape[1] != 1:
-        raise ValueError("y_train deve ser um DataFrame com exatamente 1 coluna.")
+        raise ValueError("y_train must be a DataFrame with exactly 1 column.")
 
     rng = np.random.default_rng(random_state)
-    X_novo = X_train.copy()
+    X_new = X_train.copy()
     y_series = y_train.iloc[:, 0]
 
     n_cols = X_train.shape[1]
-    n_cols_ruidosas = math.ceil(p * n_cols)
+    n_noisy_cols = math.ceil(p * n_cols)
 
-    # Valor máximo de pixel conforme dataset
-    valor_maximo = 255 if dataset_name.lower() == "mnist_784" else 16
-    valor_minimo = 0
+    # Max pixel value according to dataset
+    max_value = 255 if dataset_name.lower() == "mnist_784" else 16
+    min_value = 0
 
-    contagem_por_classe = {}
+    count_per_class = {}
     classes = pd.unique(y_series)
 
     for cls in classes:
-        index = y_series.index[y_series == cls]
-        n_inst = len(index)
-        n_ruidosas = math.ceil(p * n_inst)
-        if n_ruidosas == 0:
-            contagem_por_classe[cls] = 0
+        idx = y_series.index[y_series == cls]
+        n_inst = len(idx)
+        n_noisy = math.ceil(p * n_inst)
+        if n_noisy == 0:
+            count_per_class[cls] = 0
             continue
 
-        index_escolhidos = rng.choice(index.to_numpy(), size=n_ruidosas, replace=False)
-        contagem_por_classe[cls] = len(index_escolhidos)
+        chosen_idx = rng.choice(idx.to_numpy(), size=n_noisy, replace=False)
+        count_per_class[cls] = len(chosen_idx)
 
-        for i in index_escolhidos:
-            # Sorteio de colunas (pixels) específicos desta instância
-            colunas_escolhidas = rng.choice(
-                X_novo.columns.to_numpy(), size=n_cols_ruidosas, replace=False
+        for i in chosen_idx:
+            # Pick columns (pixels) specific to this instance
+            chosen_cols = rng.choice(
+                X_new.columns.to_numpy(), size=n_noisy_cols, replace=False
             )
 
-            # Metade pepper (0), metade salt (max). Se ímpar, extra vai para salt.
-            rng.shuffle(colunas_escolhidas)
-            metade = len(colunas_escolhidas) // 2
-            col_pepper = colunas_escolhidas[:metade]
-            col_salt = colunas_escolhidas[metade:]
+            # Half pepper (0), half salt (max). If odd, extra goes to salt.
+            rng.shuffle(chosen_cols)
+            half = len(chosen_cols) // 2
+            col_pepper = chosen_cols[:half]
+            col_salt = chosen_cols[half:]
 
-            # Atribuição
-            X_novo.loc[i, col_pepper] = valor_minimo
-            X_novo.loc[i, col_salt] = valor_maximo
+            # Assignment
+            X_new.loc[i, col_pepper] = min_value
+            X_new.loc[i, col_salt] = max_value
 
-    # Auditoria
-    print("=== AUDITORIA: data_noise_images (salt & pepper) ===")
+    # Audit
+    print("=== AUDIT: data_noise_images (salt & pepper) ===")
     print(f"Dataset: {dataset_name}, p: {p}, random_state: {random_state}")
     print(
-        f"Nº de colunas (pixels) totais: {n_cols}, nº de colunas ruidosas por instância: {n_cols_ruidosas}"
+        f"Total columns (pixels): {n_cols}, noisy columns per instance: {n_noisy_cols}"
     )
-    print("Instâncias alteradas por classe:")
+    print("Instances changed per class:")
     for cls in classes:
-        print(f"  - {cls}: {contagem_por_classe.get(cls, 0)}")
-    print("Proporção salt/pepper por instância: 50/50 (extra para 'salt' quando ímpar)")
+        print(f"  - {cls}: {count_per_class.get(cls, 0)}")
+    print("Salt/pepper ratio per instance: 50/50 (extra to 'salt' if odd)")
 
-    return X_novo
+    return X_new
 
 
 # ============================================================
-# 3) DATA NOISE (TABULAR) - numérico (gaussiano) + categórico (troca)
-#     - 10% instâncias por classe
-#     - 10% colunas numéricas por instância
-#     - 10% colunas categóricas por instância
+# 3) DATA NOISE (TABULAR) - numeric (gaussian) + categorical (swap)
+#     - 10% instances per class
+#     - 10% numeric columns per instance
+#     - 10% categorical columns per instance
 # ============================================================
 def data_noise_tabular(
     X_train: pd.DataFrame,
@@ -169,147 +169,147 @@ def data_noise_tabular(
     random_state: int = 42,
 ) -> pd.DataFrame:
     """
-    Aplica ruído em dados TABULARES no TREINO, de forma estratificada:
-    - Seleciona ceil(p * n_instâncias_da_classe) por classe.
-    - Para CADA instância selecionada:
-        * Sorteia ceil(p * nº de colunas numéricas) e aplica ruído Gaussiano aditivo:
-          - ruído ~ N(0, std_col), usando std calculado na coluna inteira antes do ruído;
-          - clip dos valores em [min_col, max_col] (calculados antes do ruído);
-          - se coluna é inteira, arredonda e preserva dtype original.
-        * Sorteia ceil(p * nº de colunas categóricas) e troca o valor por outro válido (≠ valor atual).
+    Applies noise to TABULAR data in TRAIN, stratified:
+    - Selects ceil(p * n_instances_per_class) per class.
+    - For EACH selected instance:
+        * Randomly picks ceil(p * number of numeric columns) and applies additive Gaussian noise:
+          - noise ~ N(0, std_col), using std calculated on the entire column before noise;
+          - clips values to [min_col, max_col] (calculated before noise);
+          - if column is integer, rounds and preserves original dtype.
+        * Randomly picks ceil(p * number of categorical columns) and swaps the value for another valid one (≠ current value).
 
-    Observação:
-        - Colunas sorteadas são por instância (não fixas globalmente).
-        - NaN em categóricas permanece inalterado.
+    Note:
+        - Columns are picked per instance (not fixed globally).
+        - NaN in categoricals remains unchanged.
 
-    Parâmetros:
-        X_train: dados tabulares de treino.
-        y_train: DataFrame 1 coluna com rótulos (p/ estratificação).
-        numerical_columns: nomes de colunas numéricas.
-        categorical_columns: nomes de colunas categóricas.
-        p: fração (default=0.10).
-        random_state: semente (default=42).
+    Parameters:
+        X_train: tabular training data.
+        y_train: DataFrame 1 column with labels (for stratification).
+        numerical_columns: names of numeric columns.
+        categorical_columns: names of categorical columns.
+        p: fraction (default=0.10).
+        random_state: seed (default=42).
 
-    Retorna:
-        X_train modificado.
+    Returns:
+        Modified X_train.
     """
     if not isinstance(y_train, pd.DataFrame) or y_train.shape[1] != 1:
-        raise ValueError("y_train deve ser um DataFrame com exatamente 1 coluna.")
+        raise ValueError("y_train must be a DataFrame with exactly 1 column.")
 
     rng = np.random.default_rng(random_state)
-    X_novo = X_train.copy()
+    X_new = X_train.copy()
     y_series = y_train.iloc[:, 0]
 
-    # Preparar estatísticas das colunas numéricas (antes do ruído)
-    # std pode ser 0 (coluna constante); nesse caso não alteramos essa coluna quando sorteada.
-    medias = {}
-    desvios = {}
+    # Prepare statistics for numeric columns (before noise)
+    # std can be 0 (constant column); in this case, do not alter this column when picked.
+    means = {}
+    stds = {}
     mins = {}
     maxs = {}
     for col in numerical_columns:
-        col_series = X_novo[col]
-        medias[col] = col_series.mean()
-        desvios[col] = col_series.std(ddof=0)  # ddof=0 (populacional) p/ estabilidade
+        col_series = X_new[col]
+        means[col] = col_series.mean()
+        stds[col] = col_series.std(ddof=0)  # ddof=0 (population) for stability
         mins[col] = col_series.min()
         maxs[col] = col_series.max()
 
-    # Preparar domínios das categóricas (valores possíveis, excluindo NaN)
-    dominios_categoricos = {}
+    # Prepare domains for categoricals (possible values, excluding NaN)
+    categorical_domains = {}
     for col in categorical_columns:
-        valores = pd.unique(X_novo[col].dropna())
-        dominios_categoricos[col] = list(valores)
+        values = pd.unique(X_new[col].dropna())
+        categorical_domains[col] = list(values)
 
-    # Tamanhos a sortear por instância
-    n_colunas_numericas = (
+    # Number to pick per instance
+    n_numeric_cols = (
         math.ceil(p * len(numerical_columns)) if len(numerical_columns) > 0 else 0
     )
-    n_colunas_categoricas = (
+    n_categorical_cols = (
         math.ceil(p * len(categorical_columns)) if len(categorical_columns) > 0 else 0
     )
 
-    contagem_instancias = {}
+    instance_counts = {}
     classes = pd.unique(y_series)
 
     for cls in classes:
-        index = y_series.index[y_series == cls]
-        n_inst = len(index)
-        n_ruidosas = math.ceil(p * n_inst)
-        contagem_instancias[cls] = n_ruidosas
+        idx = y_series.index[y_series == cls]
+        n_inst = len(idx)
+        n_noisy = math.ceil(p * n_inst)
+        instance_counts[cls] = n_noisy
 
-        if n_ruidosas == 0:
+        if n_noisy == 0:
             continue
 
-        index_escolhidos = rng.choice(index.to_numpy(), size=n_ruidosas, replace=False)
+        chosen_idx = rng.choice(idx.to_numpy(), size=n_noisy, replace=False)
 
-        for i in index_escolhidos:
-            # --- NUMÉRICAS: escolher colunas desta instância ---
-            if n_colunas_numericas > 0:
-                cols_num_escolhidas = rng.choice(
+        for i in chosen_idx:
+            # --- NUMERIC: pick columns for this instance ---
+            if n_numeric_cols > 0:
+                chosen_num_cols = rng.choice(
                     numerical_columns,
-                    size=min(n_colunas_numericas, len(numerical_columns)),
+                    size=min(n_numeric_cols, len(numerical_columns)),
                     replace=False,
                 )
-                for col in cols_num_escolhidas:
-                    std_col = desvios[col]
+                for col in chosen_num_cols:
+                    std_col = stds[col]
                     if std_col is None or np.isnan(std_col) or std_col == 0:
-                        # Coluna constante (ou std inválido): não altera
+                        # Constant column (or invalid std): do not alter
                         continue
 
-                    valor_atual = X_novo.at[i, col]
-                    ruido = rng.normal(0.0, std_col)
-                    novo_valor = valor_atual + ruido
+                    current_value = X_new.at[i, col]
+                    noise = rng.normal(0.0, std_col)
+                    new_value = current_value + noise
 
-                    # Clipar para [min, max] observados
-                    novo_valor = max(mins[col], min(maxs[col], novo_valor))
+                    # Clip to [min, max] observed
+                    new_value = max(mins[col], min(maxs[col], new_value))
 
-                    # Se a coluna for inteira, arredondar e preservar dtype
-                    if is_integer_dtype(X_novo[col].dtype):
-                        # lidar com nulos em inteiros (pandas 'Int64') — aqui não geramos NaN
-                        novo_valor = int(round(novo_valor))
+                    # If column is integer, round and preserve dtype
+                    if is_integer_dtype(X_new[col].dtype):
+                        # handle nulls in integers (pandas 'Int64') — here we do not generate NaN
+                        new_value = int(round(new_value))
 
-                    X_novo.at[i, col] = novo_valor
+                    X_new.at[i, col] = new_value
 
-            # --- CATEGÓRICAS: escolher colunas desta instância ---
-            if n_colunas_categoricas > 0:
-                cols_cat_escolhidas = rng.choice(
+            # --- CATEGORICAL: pick columns for this instance ---
+            if n_categorical_cols > 0:
+                chosen_cat_cols = rng.choice(
                     categorical_columns,
-                    size=min(n_colunas_categoricas, len(categorical_columns)),
+                    size=min(n_categorical_cols, len(categorical_columns)),
                     replace=False,
                 )
-                for col in cols_cat_escolhidas:
-                    valor_atual = X_novo.at[i, col]
-                    if pd.isna(valor_atual):
-                        # Mantém NaN
+                for col in chosen_cat_cols:
+                    current_value = X_new.at[i, col]
+                    if pd.isna(current_value):
+                        # Keep NaN
                         continue
 
-                    dominio = dominios_categoricos.get(col, [])
-                    # Se não houver alternativa diferente, não altera
-                    alternativas = [v for v in dominio if v != valor_atual]
-                    if len(alternativas) == 0:
+                    domain = categorical_domains.get(col, [])
+                    # If no alternative different, do not alter
+                    alternatives = [v for v in domain if v != current_value]
+                    if len(alternatives) == 0:
                         continue
 
-                    X_novo.at[i, col] = rng.choice(alternativas)
+                    X_new.at[i, col] = rng.choice(alternatives)
 
-    # Auditoria
-    print("=== AUDITORIA: data_noise_tabular ===")
+    # Audit
+    print("=== AUDIT: data_noise_tabular ===")
     print(f"p: {p}, random_state: {random_state}")
     print(
-        f"Num colunas numéricas: {len(numerical_columns)} | sorteadas por instância: {n_colunas_numericas}"
+        f"Num numeric columns: {len(numerical_columns)} | picked per instance: {n_numeric_cols}"
     )
     print(
-        f"Num colunas categóricas: {len(categorical_columns)} | sorteadas por instância: {n_colunas_categoricas}"
+        f"Num categorical columns: {len(categorical_columns)} | picked per instance: {n_categorical_cols}"
     )
-    print("Instâncias alteradas por classe:")
+    print("Instances changed per class:")
     for cls in classes:
-        print(f"  - {cls}: {contagem_instancias.get(cls, 0)}")
+        print(f"  - {cls}: {instance_counts.get(cls, 0)}")
 
-    return X_novo
+    return X_new
 
 
 # ============================================================
-# 4) DATA NOISE (TEXTO) - remoção de palavras
-#     - 10% instâncias por classe
-#     - 20% de chance de remoção por palavra
+# 4) DATA NOISE (TEXT) - word removal
+#     - 10% instances per class
+#     - 20% chance of removal per word
 # ============================================================
 def data_noise_text(
     X_train: pd.DataFrame,
@@ -319,92 +319,92 @@ def data_noise_text(
     col_name: str = None,
 ) -> pd.DataFrame:
     """
-    Aplica ruído textual por REMOÇÃO DE PALAVRAS no TREINO, estratificado:
-    - Seleciona ceil(p * n_instâncias_da_classe) por classe.
-    - Para cada texto selecionado:
-        * Tokeniza por espaço (split simples).
-        * Remove cada palavra com probabilidade 0.20.
-        * Garante pelo menos 1 palavra (se esvaziar, mantém a primeira).
-        * Tenta garantir que a linha selecionada seja de fato alterada
-            (se nenhuma palavra foi removida e houver >= 2 tokens, remove 1 token aleatório).
-    - Preserva caixa e pontuação (apenas remove tokens inteiros).
-    - Usa a coluna de texto passada como parâmetro.
+    Applies textual noise by WORD REMOVAL in TRAIN, stratified:
+    - Selects ceil(p * n_instances_per_class) per class.
+    - For each selected text:
+        * Tokenizes by space (simple split).
+        * Removes each word with probability 0.20.
+        * Ensures at least 1 word (if empty, keeps the first).
+        * Tries to ensure the selected row is actually changed
+            (if no word was removed and there are >= 2 tokens, removes 1 random token).
+    - Preserves case and punctuation (just removes whole tokens).
+    - Uses the text column passed as parameter.
 
-    Parâmetros:
-        X_train (pd.DataFrame): DataFrame que tem uma coluna de texto.
-        y_train (pd.DataFrame): DataFrame 1 coluna com rótulos (p/ estratificação).
-        p (float): fração de instâncias por classe a serem afetadas (default=0.10).
-        random_state (int): semente.
+    Parameters:
+        X_train (pd.DataFrame): DataFrame with a text column.
+        y_train (pd.DataFrame): DataFrame 1 column with labels (for stratification).
+        p (float): fraction of instances per class to be affected (default=0.10).
+        random_state (int): seed.
 
-    Retorna:
-        pd.DataFrame: X_train com textos modificados.
+    Returns:
+        pd.DataFrame: X_train with modified texts.
     """
 
     if not isinstance(y_train, pd.DataFrame) or y_train.shape[1] != 1:
-        raise ValueError("y_train deve ser um DataFrame com exatamente 1 coluna.")
-    
+        raise ValueError("y_train must be a DataFrame with exactly 1 column.")
+
     if col_name is None or col_name not in X_train.columns:
-        raise ValueError("col_name deve ser o nome de uma coluna existente em X_train.")
+        raise ValueError("col_name must be the name of an existing column in X_train.")
 
     rng = np.random.default_rng(random_state)
-    X_novo = X_train.copy()
+    X_new = X_train.copy()
     y_series = y_train.iloc[:, 0]
 
-    prob_remocao = 0.20
-    contagem_por_classe = {}
+    removal_prob = 0.20
+    count_per_class = {}
     classes = pd.unique(y_series)
 
     for cls in classes:
         idx_cls = y_series.index[y_series == cls]
         n_inst = len(idx_cls)
-        n_ruidosas = math.ceil(p * n_inst)
-        contagem_por_classe[cls] = n_ruidosas
+        n_noisy = math.ceil(p * n_inst)
+        count_per_class[cls] = n_noisy
 
-        if n_ruidosas == 0:
+        if n_noisy == 0:
             continue
 
-        idx_instancias = rng.choice(idx_cls.to_numpy(), size=n_ruidosas, replace=False)
+        idx_instances = rng.choice(idx_cls.to_numpy(), size=n_noisy, replace=False)
 
-        for i in idx_instancias:
-            texto = X_novo.at[i, col_name]
+        for i in idx_instances:
+            text = X_new.at[i, col_name]
 
-            # Se não for string (ex: NaN), não altera
-            if not isinstance(texto, str):
+            # If not string (e.g., NaN), do not alter
+            if not isinstance(text, str):
                 continue
 
-            tokens = texto.split()
+            tokens = text.split()
             if len(tokens) == 0:
                 continue
 
-            # Remoção independente com probabilidade 0.20 por token
-            novos_tokens = []
+            # Independent removal with probability 0.20 per token
+            new_tokens = []
             for tk in tokens:
-                if rng.random() < prob_remocao:
+                if rng.random() < removal_prob:
                     continue
-                novos_tokens.append(tk)
+                new_tokens.append(tk)
 
-            # >>> GARANTIR MUDANÇA QUANDO POSSÍVEL:
-            # Se nada foi removido e há pelo menos 2 tokens, remover 1 token aleatório
-            if len(novos_tokens) == len(tokens) and len(tokens) >= 2:
+            # >>> ENSURE CHANGE WHEN POSSIBLE:
+            # If nothing was removed and there are at least 2 tokens, remove 1 random token
+            if len(new_tokens) == len(tokens) and len(tokens) >= 2:
                 idx_drop = rng.integers(0, len(tokens))
-                novos_tokens = tokens[:idx_drop] + tokens[idx_drop + 1 :]
+                new_tokens = tokens[:idx_drop] + tokens[idx_drop + 1 :]
 
-            # Garante ao menos 1 token
-            if len(novos_tokens) == 0:
-                novos_tokens = [tokens[0]]
+            # Ensure at least 1 token
+            if len(new_tokens) == 0:
+                new_tokens = [tokens[0]]
 
-            X_novo.at[i, col_name] = " ".join(novos_tokens)
+            X_new.at[i, col_name] = " ".join(new_tokens)
 
-    # Auditoria
-    print("=== AUDITORIA: data_noise_text ===")
+    # Audit
+    print("=== AUDIT: data_noise_text ===")
     print(
-        f"p: {p}, random_state: {random_state}, prob_remocao_por_palavra: {prob_remocao}"
+        f"p: {p}, random_state: {random_state}, removal_prob_per_word: {removal_prob}"
     )
-    print("Instâncias alteradas por classe:")
+    print("Instances changed per class:")
     for cls in classes:
-        print(f"  - {cls}: {contagem_por_classe.get(cls, 0)}")
+        print(f"  - {cls}: {count_per_class.get(cls, 0)}")
 
-    return X_novo
+    return X_new
 
 
 import keyword
@@ -412,43 +412,43 @@ import re
 import unicodedata
 
 
-def normalize_cols(nomes_colunas):
-    vistos = {}  # base -> contador (para sufixos _1, _2, ...)
-    saida = []
+def normalize_cols(column_names):
+    seen = {}  # base -> counter (for suffixes _1, _2, ...)
+    output = []
 
-    for nome in nomes_colunas:
-        s = str(nome).strip().lower()
+    for name in column_names:
+        s = str(name).strip().lower()
 
-        # normaliza acentos e remove marcas diacríticas
+        # normalize accents and remove diacritics
         s = unicodedata.normalize("NFKD", s)
         s = "".join(ch for ch in s if not unicodedata.combining(ch))
 
-        # padroniza aspas curvas e troca qualquer sequência não [a-z0-9] por "_"
+        # standardize curly quotes and replace any sequence not [a-z0-9] with "_"
         s = s.replace("'", "'")
         s = re.sub(r"[^a-z0-9]+", "_", s)
 
-        # colapsa múltiplos "_" e remove "_" nos extremos
+        # collapse multiple "_" and remove "_" at ends
         s = re.sub(r"_+", "_", s).strip("_")
 
-        # vazio -> "col"
+        # empty -> "col"
         if not s:
             s = "col"
 
-        # evitar iniciar por dígito
+        # avoid starting with digit
         if s[0].isdigit():
             s = f"col_{s}"
 
-        # evitar palavras reservadas do Python
+        # avoid Python reserved words
         if keyword.iskeyword(s):
             s = f"{s}_"
 
-        # garantir unicidade (_1, _2, ...) apenas se já existir
+        # ensure uniqueness (_1, _2, ...) only if already exists
         base = s
-        k = vistos.get(base, 0)
+        k = seen.get(base, 0)
         if k > 0:
             s = f"{base}_{k}"
-        vistos[base] = k + 1
+        seen[base] = k + 1
 
-        saida.append(s)
+        output.append(s)
 
-    return saida
+    return output
